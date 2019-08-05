@@ -1,0 +1,34 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+##### Exercise 1
+
+(well-known) You play poker with the Archbishop of Canterbury. It turns out that he has a royal flush, which has a probability of only $1.54 \times 10^{-6}$. However, being a reputable man, you believe it is very unlikely that the Archbishop would cheat -- say 1 in a million, $1 \times 10^{-6}$. Use Bayes' rule to work out the probability that the Archbishop cheated.
+
+```{r}
+numerator <- 10^(-6)
+denominator <- 1.54 * 10^(-6) * (1 - 10^(-6)) + 10^(-6)
+numerator / denominator
+```
+
+##### Exercise 2
+
+You play tennis against your friend 5 times. You win 4 times and lose once. Assuming you had no idea how likely you were to win initially, what is the posterior distribution of your win probability (plot it in R)? Draw 10000 samples from the distribution to estimate how likely it is that your win probability is greater than 70%.
+
+```{r}
+alpha <- 4 + 1
+beta <- 1 + 1
+x <- seq(0, 1, length.out = 100)
+
+density <- dbeta(x, alpha, beta)
+
+plot(x, density, type='l')
+```
+
+```{r}
+mean(rbeta(10000, alpha, beta) > 0.7)
+```
+
