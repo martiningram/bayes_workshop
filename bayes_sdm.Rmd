@@ -9,6 +9,38 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# The problem
+
+We're going to have a species distribution modelling example. We have what's called "survey data": people went out into the field and checked whether a certain bird was present or absent at a site. These are our outcomes $y_{ij}$: at site $i$, species $j$ was either observed ($y_{ij} = 1$) or not observed ($y_{ij} = 0$). We also have access to a number of covariates, a subset of the so-called "BIOCLIM" variables:
+
+```
+BIO1 = Annual Mean Temperature
+BIO2 = Mean Diurnal Range (Mean of monthly (max temp - min temp))
+BIO3 = Isothermality (BIO2/BIO7) (* 100)
+BIO4 = Temperature Seasonality (standard deviation *100)
+BIO5 = Max Temperature of Warmest Month
+BIO6 = Min Temperature of Coldest Month
+BIO7 = Temperature Annual Range (BIO5-BIO6)
+BIO8 = Mean Temperature of Wettest Quarter
+BIO9 = Mean Temperature of Driest Quarter
+BIO10 = Mean Temperature of Warmest Quarter
+BIO11 = Mean Temperature of Coldest Quarter
+BIO12 = Annual Precipitation
+BIO13 = Precipitation of Wettest Month
+BIO14 = Precipitation of Driest Month
+BIO15 = Precipitation Seasonality (Coefficient of Variation)
+BIO16 = Precipitation of Wettest Quarter
+BIO17 = Precipitation of Driest Quarter
+BIO18 = Precipitation of Warmest Quarter
+BIO19 = Precipitation of Coldest Quarter
+```
+
+What we are interested in is the influence of these covariates on whether or not a species is present or absent at a site. If we can model this well, we can perhaps hope to predict new sites well that are similar.
+
+The data we're going to used is from the "Breeding Bird Survey", which contains presence or absence for 371 different bird species in the USA. We also have access to 8 different environmental covariates.
+
+## Modelling
+
 First, we're going to load in our data:
 
 ```{r}
@@ -39,7 +71,7 @@ head(y_wood)
 
 Great! We have the vector of presence / absence data.
 
-One thing that is (almost) always good to do before a regression is to centre and scale our data. Right now, we see that the covariates have large integer values, and their mean and standard deviations are not 0 and 1:
+One thing that is usually good to do before a regression is to centre and scale our data. Right now, we see that the covariates have large integer values, and their mean and standard deviations are not 0 and 1:
 
 ```{r}
 head(x)
@@ -72,9 +104,9 @@ $$
 y_i \sim \textrm{Bern}(p_i)
 $$
 
-This notation means that the $y_i$, the presence ($y_i = 1$) or absence ($y_i = 0$) of the species at site $i$ is distributed as a Bernoulli distribution with success probability $p_i$.
+This notation means that the $y_i$, the presence ($y_i = 1$) or absence ($y_i = 0$) of the species at site $i$ is distributed as a Bernoulli distribution with success probability $p_i$. Note that this is exactly the same as our coin toss example from earlier!
 
-That's all very well, but how do we model the probability of presence, $p_i$? There are lots of options, but here we're just going to go with a linear model. To start with, we also just use one covariate plus an intercept. We could imagine doing
+That's all very well, but how do we model the probability of presence, $p_i$? There are lots of options, but here we're just going to go with a linear model. To start with, we also just use one covariate plus an intercept (we'll move to more later). We could imagine doing
 
 $$
 p_i = \theta_1 x_i + \theta_2
@@ -91,7 +123,7 @@ plot(x_plot, p_i)
 ```
 
 Note how we would be predicting negative probabilities, and also some that are greater than 1! That doesn't work.
-NOTE: In some cases, you can get away with doing this, if you use a normal likelihood. But we won't go into that here.
+NOTE: In some cases, you can get away with doing this, if you use a Gaussian likelihood. But we won't go into that here.
 
 Instead, we use something called the inverse logit "link function" to turn our linear prediction into a valid probability:
 
@@ -142,9 +174,9 @@ p_i <- plogis(theta_1 * x_fit + theta_2)
 hist(p_i, breaks=50)
 ```
 
-We see that under our prior, the model is almost perfectly certain the bird is present at some point, and almost perfectly certain it isn't present at others. That doesn't seem reasonable; it's much more likely that the bird is more likely to be at some sites than others, but hardly that we can say with almost 100% confidence that it will be present or absent.
+We see that under this prior, the model is almost perfectly certain the bird is present at some point, and almost perfectly certain it isn't present at others. That doesn't seem reasonable; it's much more likely that the bird is more likely to be at some sites than others, but hardly that we can say with almost 100% confidence that it will be present or absent.
 
-These so-called "non-informative" priors used to be popular because they try to minimise the influence of the prior distribution. Many people advocate for ditching these priors these days however and instead using priors that make sense. For simple models, it doesn't really matter, but for more complicated models it's important that you think about your priors and choose ones that produce reasonable data.
+These so-called "non-informative" priors used to be popular because they try to minimise the influence of the prior distribution. Many people advocate for ditching these priors these days however and instead using priors that we can justify. For simple models, it doesn't really matter, but for more complicated models it's important that you think about your priors and choose ones that produce reasonable data.
 
 Let's try a more reasonable setup:
 $$
@@ -176,6 +208,36 @@ I hope you agree that that looks much more reasonable! We now have some sites wh
 
 Now that we have a reasonable prior, let's write this model up in Stan:
 
+```
+data {
+  int n_obs; // Number of observations
+  int y[n_obs]; // Presence / absence at each site
+  vector[n_obs] x; // Covariate
+}
+parameters {
+  real theta_1; // Slope
+  real theta_2; // Intercept
+}
+model {
+  // Priors
+  theta_1 ~ normal(0, 1);
+  theta_2 ~ normal(0, 1);
+  
+  y ~ bernoulli_logit(theta_1 * x + theta_2);
+}
+```
+
+There's a few new things here. Let's make sure we understand them.
+
+* Our `y` is now what is called an `array`, because we have `n_obs` observations, one for each site. Note the placement of the square brackets _after_ the variable. It is still integer, because it can only be 0 and `.
+* Our predictors `x` are a `vector[n_obs]`. Note that here, the square brackets are before the the variable name. This is admittedly a bit confusing, but that's the way it works.
+* Note that we wrote `y ~ bernoulli_logit(...)`. Because it's so common to use the inverse logit transformation, $\textrm{logit}^{-1}$, together with the Bernoulli likelihood, Stan gives us a function to do it in one go. We could also have done: `y ~ bernoulli(inv_logit(...))`, but this way is better.
+* Finally, not that Stan has "vectorised" this. Even though `y` is an array, we don't have to write a loop (although we could have). This way is usually faster and easier to read.
+
+If you have any questions, please let me know, we can talk about this at length.
+
+Now, let's load this Stan model (as usual, we saved it to a file):
+
 ```{r}
 library(rstan)
 rstan_options(auto_write = TRUE)
@@ -205,7 +267,7 @@ OK, great! Now let's look at the summary Stan provides us with:
 print(draws)
 ```
 
-Good: the `Rhat` statistic is 1, and we have a high number of effective samples, which indicate that are chains have likely converged.
+Good: the `Rhat` statistic is 1, and we have a high number of effective samples, which indicate that the chains have likely converged.
 
 Stan also provides a plot function:
 
@@ -213,7 +275,7 @@ Stan also provides a plot function:
 plot(draws)
 ```
 
-So it looks like the slope is slightly negative, and the intercept is quite small, at around -2.
+So it looks like the slope $\theta_1$ is slightly negative, and the intercept $\theta_2$ is quite small, at around -2.
 
 We can also just look at some histograms:
 
@@ -259,8 +321,9 @@ p <- ggplot(data = data, mapping = aes(x=x_plot, y=y_mean, ymin=y_lower, ymax=y_
 p
 ```
 
-We see that it looks like the Wood Duck is happier in climates with small diurnal range.
+We see that it looks like the Wood Duck seems to be more likely to be present in climates with small diurnal range.
 
 ## Exercises
 
-Fit the same model to another bird species, the "American Wigeon". The easiest way is to just change the species name at the right secion in the file. What can you say about the posteriors for the slope and the intercept?
+1. Fit the same model to another bird species, the "American Wigeon". The easiest way is to just change the species name at the right secion in the file. What's the probability that its slope $\theta_1$ is greater than 0?
+2. Add a second covariate to the model, `bio3`, and fit the Wood Duck again. You'll have to make a copy of the Stan file and modify that.
