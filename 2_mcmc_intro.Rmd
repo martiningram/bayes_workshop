@@ -1,0 +1,187 @@
+---
+title: "Intro to MCMC"
+author: "Martin Ingram"
+date: "07/08/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In the last session we started to use Bayes' rule. Here it is again:
+
+$$
+p(\theta | y) = \frac{p(\theta) p(y | \theta)}{p(y)}
+$$
+
+We saw that even for simple models like the coin toss, the calculation we needed to do was getting a bit complicated. In particular, usually we can easily compute $p(\theta)$ and $p(y|\theta)$ -- they are just our prior and our likelihood, both of which we get to pick -- but $p(y)$ causes us issues, because as we saw, we usually need to compute it as:
+
+$$
+p(y) = \sum_{\theta} p(y|\theta)p(\theta) \textrm{ (discrete case) } \\
+p(y) = \int_{\theta} p(y|\theta)p(\theta) \textrm{ (continuous case) }
+$$
+
+For some rare cases, like the coin toss, we can solve the integral exactly. These rare cases can be really useful and span a fair few models, like linear regression, the coin toss setup, and some others. But they are quite limited, and it's usually said that this really held Bayesian modelling back. The setup is really neat -- just use Bayes' rule to solve your problems -- but in practice, these integrals made your life difficult.
+
+That all changed in 1989 with the BUGS project. I'm not sure when the first version was released exactly; Wikipedia lists WinBUGS as being released in 1997. In a nutshell, BUGS allows you to do the following:
+
+1. Specify your prior $p(\theta)$
+2. Specify your likelihood $p(y|\theta)$
+
+$\rightarrow$ BUGS will draw _samples_ from your posterior $p(\theta|y)$.
+
+No need for any integrals! BUGS does this using a technique called "Markov Chain Monte Carlo" (MCMC), which we'll go into in a little bit.
+
+BUGS is a bit old now, and its development is not that active. Since BUGS, people developed a framework called JAGS (2007). The current standard framework is probably Stan (2012), which is why we're going to use it here. It uses a clever algorithm to sample which typically works better on complex models than BUGS or JAGS. Finally, greta (2017) is an exciting new framework written by Nick Golding here at Uni Melbourne, which uses Google's Tensorflow package to do the sampling and can scale to really big models. I really urge you to check it out!
+
+## How does MCMC work
+
+We won't be able to go into any detail of how MCMC works under the hood. But I do want to give you some intuition. Much like we did with the coin toss when we were calculating the mean and probabilities involving $\theta$ by drawing samples, the goal of the MCMC algorithm is to draw samples from $p(\theta|y)$. The general algorithm used by the samplers is known as the "Metropolis-Hastings Algorithm", and very broadly speaking it consists of the following two steps:
+
+1. A proposal: given the current position (e.g. probability of heads $\theta$), propose a new location $\theta^*$
+2. Accept / reject: Compute the ratio $r = p(\theta^*|y) / p(\theta|y)$ (which we can do since $p(y)$ cancels) and accept the proposal with probability $\min(1, r)$.
+
+The surprising result is that under some pretty general conditions, if run long enough, the samples returned by this algorithm are (usually correlated) samples from the posterior $p(\theta|y)$. The thing we are constructing here is known as a "Markov Chain", hence the name MCMC.
+
+Anyway, don't worry if you didn't get all that, I just wanted to give you a general feel. Here's a great visualisation of what's going on:
+
+https://chi-feng.github.io/mcmc-demo/app.html#NaiveNUTS,banana
+
+## How to make sure MCMC actually worked
+
+Although there is a proof that _if run long enough_ the draws returned by a MCMC algorithm will be from $p(\theta|y)$, we don't know how long that is. There is always an initial period where the "chain is converging", i.e. it is moving towards the distribution $p(\theta|y)$ but isn't there yet. Samplers try to avoid returning this part of the chain by doing what's called a "warmup", or "burn-in", but that's still no guarantee that it worked. There are some diagnostics that can help spot whether our chain really has converged:
+
+1. The so-called $\hat{R}$ statistic (pronounced R hat) is probably the most widely used diagnostic. It works by running a number of different chains starting at different positions. The idea is that while these chains are all different at the start, they should eventually end up sampling from the same distribution. To work this out, it computes the within-chain variance and compares it to the between-chain variance; if they are very similar, $\hat{R}$ is close to 1, and that's a good sign.
+2. Often, people also report $n_{eff}$, the effective sample size. Before, when we used `rbeta` to draw a number of $n$ samples, we were able to draw them independently from the posterior because we knew its distribution. In MCMC, because we are moving around in sequence, the samples are usually not independent, but "autocorrelated", i.e. the previous sample is similar to the current sample. So $n_{eff}$ will usually be smaller than the number of samples in our chain. In general, a larger number of $n_{eff}$ is a good sign.
+
+Please note that neither of these diagnostics _guarantees_ that everything is OK, as some Bayesians are at pains to point out. While that's true and you should always be careful to make sure your model results make sense, in my experience $\hat{R}$ in particular is a pretty reliable diagnostic.
+
+## MCMC on the coin toss example
+
+We'll now use MCMC on the coin toss example using Stan. First, we need to import `rstan`, which is the R version of Stan. We'll also set some options which will make Stan run faster:
+
+```{r}
+library(rstan)
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+Let's first write our model assumptions out again. As a prior, we're using the Beta distribution, and let's say we're using a uniform prior again:
+
+$$
+\theta \sim \textrm{Beta}(1, 1)
+$$
+
+For the likelihood, we'll use the Bernoulli distribution again. However, the Bernoulli distribution is for binary outcomes, so we could only update using a single coin toss outcome. Instead, we'll be using the Binomial distribution:
+
+$$
+y | \theta \sim \textrm{Binomial}(n, \theta)
+$$
+
+Here, $y$ is now the number of heads observed; $n$ is the number of coin tosses (or "trials"); and $\theta$ is the probability of heads (or "success"). For example, if we toss the coin 10 times and it comes up heads 5 times, $n=10$ and $y=5$.
+
+A model in Stan is usually written in a text file ending with ".stan". We'll be calling this one "beta_binomial.stan". A Stan model consists of (at least) three sections:
+
+1. data: This section lists the data we put into the Stan model.
+2. parameters: This section lists the parameters we want to estimate.
+3. model: This is where we relate the data to the parameters, i.e. specify the prior and likelihood.
+
+This is how it'll look like:
+
+```
+data {
+  int y; // Number of heads
+  int n; // Number of trials
+}
+parameters {
+  real<lower=0, upper=1> theta;
+}
+model {
+  // Prior:
+  theta ~ beta(1, 1);
+  
+  // Likelihood
+  y ~ binomial(n, theta);
+}
+```
+
+Here are some things to note:
+
+* Stan uses types of variables. The number of heads $y$, for example, can only be integer, i.e. (0, 1, 2...), and the same goes for $n$. Hence we call this variable `int`. By contrast, `theta` can take on any value between 0 and 1, e.g. 0.5 or 0.7, hence it's a `real` variable.
+* We can give parameters ranges using `lower=` and `upper=`. In this case it's crucial, because it doesn't make sense to have a probability of heads that's greater than 1 or less than 0.
+* Every line has to end with a semi-colon, which might take some getting used to!
+* Comments are written with `//`, although R-style `#` also works.
+* Note how the model block looks a lot like the maths we wrote above. That's one nice thing about Stan.
+
+Let's give it a go! First, we need to load the model:
+
+```{r}
+model <- stan_model('./beta_binomial.stan')
+```
+
+This can take a while, which is one of the irritating things about Stan. Under the hood, it's compiling the model to fast C++ code. Thankfully this should only happen once, as long as we have `rstan_options(auto_write = TRUE)` enabled, and as long as we don't modify the model. One potentially annoying but ultimately useful feature is that Stan will complain if something doesn't make sense, like if we miss out a semi-colon at the end of the line, or we try to specify an integer for the success probability.
+
+Now, we need to give Stan the data to use. We do this by making a list:
+
+```{r}
+stan_data <- list(
+  y = 5,
+  n = 10
+)
+```
+
+Now, we can draw samples from $p(\theta|y)$, just as we did before, by calling `sampling`:
+
+```{r}
+model_fit <- sampling(model, data=stan_data)
+```
+
+Note that Stan will print out how it's going. This tiny model should be very quick to fit. Stan provides some helpful summaries of what happened:
+
+```{r}
+model_fit
+```
+
+Check out `Rhat` and `n_eff`, which are the two quantities we mentioned earlier. `Rhat` is 1, and `n_eff` is pretty big (not as big as 4000, the number of samples, but more than big enough), so things look good. Stan also reports the mean and quantiles for `theta` and `lp__`. The important one here is the one for `theta`; `lp__` is interesting in its own right but not our focus today.
+
+One thing that is often reported for Bayesian models is the so-called "credible interval". Usually, we report the 95% credible interval, which goes from the "2.5%" entry to the "97.5%" entry, so `[0.24, 0.77]` for `theta` in this case. Its interpretation is that there is a 95% probability under our model that the true value of $\theta$ is within that interval. Note that this is perhaps one advantage the Bayesian view of statistics has over the frequentist one: in frequentist terms, the "confidence interval" is much harder to define and _does not_ mean what the Bayesian credible interval means.
+
+We can plot the posterior distribution:
+
+```{r}
+plot(model_fit)
+```
+
+We can also "extract" the values of theta:
+
+```{r}
+theta_draws <- extract(model_fit)$theta
+```
+
+Let's take a look at a histogram:
+
+```{r}
+hist(theta_draws)
+```
+
+From our earlier work, we know that the posterior should be:
+
+$$
+p(\theta|y) = Beta(\theta | 1 + 5, 1 + 5) = Beta(\theta|6, 6)
+$$
+
+So let's compare some draws from that:
+
+```{r}
+beta_draws <- rbeta(4000, 6, 6)
+hist(beta_draws, col = rgb(1, 0, 0, 0.2))
+hist(theta_draws, add=TRUE, col = rgb(0, 1, 0, 0.2))
+```
+
+I hope you agree that these look pretty similar. So Stan allows us to draw samples from the posterior just like we could when we knew the exact answer. In this case, we didn't really need MCMC, but we'll move on to more interesting models next.
+
+## Exercises
+
+1. Make a copy of the `beta_binomial.stan` file called `beta_binomial_problems.stan` and try to break Stan. What happens if you forget the `<lower=0, upper=1>` for theta? What happens if you mistakenly say that `n` is a `real` variable?
+2. What happens if you give `theta` a different prior, say `normal(0, 1)`? (this doesn't really make a lot of sense, but just to show you that you can with MCMC!)

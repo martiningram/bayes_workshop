@@ -4,6 +4,8 @@ output: html_notebook
 ---
 
 
+# Section 1
+
 ##### Exercise 1
 
 (well-known) You play poker with the Archbishop of Canterbury. It turns out that he has a royal flush, which has a probability of only $1.54 \times 10^{-6}$. However, being a reputable man, you believe it is very unlikely that the Archbishop would cheat -- say 1 in a million, $1 \times 10^{-6}$. Use Bayes' rule to work out the probability that the Archbishop cheated.
@@ -32,3 +34,124 @@ plot(x, density, type='l')
 mean(rbeta(10000, alpha, beta) > 0.7)
 ```
 
+# Section 2
+
+Exercise 1: No real solution here, just playing around. We can mess around a bit.
+Exercise 2: 
+
+```{r}
+library(rstan)
+
+stan_data <- list(
+  y = 5,
+  n = 10
+)
+
+model <- stan_model('./beta_binomial_normal_prior.stan')
+
+model_fit <- sampling(model, data=stan_data)
+```
+
+```{r}
+model_fit
+```
+
+```{r}
+plot(model_fit)
+```
+
+So the results look pretty similar. The $\mathcal{N}(0, 1)$ prior is quite vague too. Things might look different if we used a $\mathcal{N}(0, 0.1)$ prior.
+
+## SDM example
+
+Exercise 1: The probability of a positive slope should be 0.739 or thereabouts.
+Exercise 2: 
+
+We need to adapt the stan code:
+
+```
+data {
+  int n_obs; // Number of observations
+  int y[n_obs]; // Presence / absence at each site
+  vector[n_obs] x1; // Covariate 1
+  vector[n_obs] x2; // Covariate 2
+}
+parameters {
+  real theta_1; // Slope for x1
+  real theta_2; // Slope for x2
+  real theta_3; // Intercept
+}
+model {
+  // Priors
+  theta_1 ~ normal(0, 1);
+  theta_2 ~ normal(0, 1);
+  theta_3 ~ normal(0, 1);
+  
+  y ~ bernoulli_logit(theta_1 * x1 + theta_2 * x2 + theta_3);
+}
+```
+
+And then we need to add to the data:
+
+```{r}
+x <- read.csv('./x_train.csv', row.names=1)
+y <- read.csv('./y_train.csv', row.names=1, check.names=FALSE)
+
+x_scaled <- scale(x)
+x1 <- x_scaled[, 1]
+x2 <- x_scaled[, 2]
+
+y <- y[, 'Wood Duck']
+```
+
+```{r}
+model_data <- list(
+  n_obs = length(x1),
+  y = y,
+  x1 = x1,
+  x2 = x2
+)
+```
+
+```{r}
+model <- stan_model('./log_reg_model_two_covariates.stan')
+
+model_fit <- sampling(model, data=model_data)
+```
+
+```{r}
+model_fit
+```
+
+So the 95% credible intervals are:
+
+* `[-0.41, -0.16]` for the slope theta_1
+* `[-0.28, 0.08]` for the slope theta_2
+* `[-2.14, -1.83]` for the intercept theta_2
+
+One remark: if we have many covariates, it can get pretty tedious to write out `theta_1, theta_2...` for each one of them. You can instead define a `vector` of coefficients $\theta$ and a matrix `X` (sometimes called the design matrix), and then compute things using matrices. But I didn't want to burden you with matrix algebra on top of all the Bayesian stuff. The Stan manual is a great resource if you are interested in how to do it.
+
+## Advanced models
+
+Slope sd:
+
+```
+     2.5%       50%     97.5% 
+0.5639543 0.7193014 0.9559265 
+```
+
+Slope mean:
+
+```
+       2.5%         50%       97.5% 
+-0.05544002  0.20132234  0.45310641 
+```
+
+We should get
+
+```
+      2.5%        50%      97.5% 
+-1.2996050  0.2185258  1.7045334 
+```
+
+For the draws from this learned hierarchical prior. And the fit takes around three times as long for me (~3 minutes).

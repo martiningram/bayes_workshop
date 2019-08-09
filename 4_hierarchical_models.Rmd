@@ -1,0 +1,206 @@
+---
+title: "More advanced models"
+author: "Martin Ingram"
+date: "08/08/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Hierarchical Models
+
+In this part, we are going to learn about hierarchical models.
+
+Hierarchical models are one of the major reasons people like Bayesian inference. A classical version of them is known as "mixed models" or "random effects models" and can be fit with tools like `lme4` in R, but Bayesian versions can give more flexibility and sometimes work better when there is not a lot of data.
+
+The key idea in hierarchical models is that we introduce another level of hierarchy in the model. Let's motivate why we might want to do this using the species distribution modelling example. Remember our model
+
+$$
+\theta_1 \sim \mathcal{N}(0, 1^2) \\
+\theta_2 \sim \mathcal{N}(0, 1^2) \\
+y_i \sim \textrm{Bern}(\textrm{logit}^{-1}(\theta_1 x_i + \theta_2))
+$$
+
+Now let's imagine we want to model several species at the same time. How would we do that? Two ideas:
+
+1. We could pretend there is no difference between the species -- after all they're all birds, so they're probably similar in some ways. We just make our $x$ and $y$ vectors longer and have more data to fit $\theta_1$ and $\theta_2$.
+2. Perhaps we think that each bird is unique and needs their own coefficients. In that case, we could just fit the same model to each species and look at them separately.
+
+Neither of these seem that satisfying, and in fact, we can consider a third option:
+
+3. The birds are different, but they also likely have _some_ shared characteristics, which we might miss out on by modelling them all separately. We can fit a hierarchical model to explore that.
+
+How do we do that? We introduce another level of hierarchy. We can do that in the following way. To keep it simple, we'll first put a hierarchical prior on the slope $\theta_1$ only.
+
+$$
+\mu_1 \sim \mathcal{N}(0, 1) \\
+\sigma_1 \sim \mathcal{N^+}(0, 1) \\
+\textrm{(The priors here could be different -- just an example)} \\
+\theta_{11} ... \theta_{1J} \sim \mathcal{N}(\mu_1, \sigma_1^2) \\
+\theta_{21} ... \theta_{2J} \sim \mathcal{N}(0, 1^2) \\
+y_{ij} \sim \textrm{Bern}(\textrm{logit}^{-1}(\theta_{1j} x_i + \theta_{2j}))
+$$
+
+Here, I'm using $\mathcal{N}^+$ to denote what's called the half-normal distribution, which is a normal distribution truncated at zero (negative standard deviations don't make sense).
+
+Let's see what's going on here. First of all, let's look at the bottom part. We now have $J$ different species, so we need $J$ different slopes and interecepts: those are the $\theta_{11} ... \theta_{1J}$ and $\theta_{21} ... \theta_{2J}$. For the same reason, we've also changed the last line to now be $y_{ij}$, because we now have a presence or absence for each of the $I$ sites and $J$ species, collected into the matrix $Y$.
+
+So far, that's just what we had to do to fit $J$ species at the same time. The hierarchical bit is the stuff at the top. Rather than giving each $\theta_{11}$ a $\mathcal{N}(0, 1)$ prior, we're actually _also inferring what the mean and variance of these slopes is_. On the top two lines we're providing what's called a _hyperprior_ because it is, in a sense, a prior on the prior for the slope.
+
+This can be a bit confusing, and it took me a while to understand. But it's very cool, because it does what we hoped it might. Let's see how. If the birds' reactions to $x$ are all similar, the hierarchical model may learn that $\sigma_1$  is small. In that case, we're close to case (1) from earlier: all the species are quite similar, and we're giving them very similar coefficients $\theta_1j$. On the other hand, perhaps the data suggest that $\sigma_1$ is large, and each bird is different. This time, we're close to case (2): fitting all species separately. The nice thing about hierarchical models is that they can strike a compromise and learn the variation between species, rather than forcing (1) or (2).
+
+Let's see what this looks like in Stan. First, let's load our data again and prepare it:
+
+```{r}
+x <- read.csv('./x_train.csv', row.names=1)
+y <- read.csv('./y_train.csv', row.names=1, check.names=FALSE)
+
+x_scaled <- scale(x)
+x_fit <- x_scaled[, 1]
+
+set.seed(1)
+
+# Pick some birds
+birds_to_use <- sample(colnames(y), size=16, replace = FALSE)
+print('Picked:' )
+print(birds_to_use)
+
+y <- y[, birds_to_use]
+```
+
+Now let's write our Stan model:
+
+```{r}
+library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores=parallel::detectCores())
+model <- stan_model('./varying_slopes.stan')
+```
+
+```
+data {
+  int n_obs; // Number of observations
+  int n_species; // Number of species
+  int y[n_obs, n_species]; // Presence / absence at each site
+  vector[n_obs] x; // Covariate
+}
+parameters {
+  real<lower=0> slope_sd;
+  real slope_mean;
+  vector[n_species] theta_1; // Slopes
+  vector[n_species] theta_2; // Intercept
+}
+model {
+  // Priors
+  // Note that here we're not doing something we should: an implementation detail 
+  // in Stan means there's a better way to do this hierarchical prior, but
+  // we'll ignore that for now.
+  // If you want to learn what to do, check this out:
+  // https://mc-stan.org/docs/2_18/stan-users-guide/reparameterization-section.html
+  slope_sd ~ normal(0, 1);
+  slope_mean ~ normal(0, 1);
+  
+  theta_1 ~ normal(slope_mean, slope_sd);
+  theta_2 ~ normal(0, 1);
+  
+  // Loop over species for likelihood
+  for (j in 1:n_species) {
+    y[:, j] ~ bernoulli_logit(theta_1[j] * x + theta_2[j]);
+  }
+  
+}
+```
+
+And we'll give it the data it needs:
+
+```{r}
+stan_data <- list(
+  n_obs = length(x_fit),
+  n_species = ncol(y),
+  y = y,
+  x = x_fit
+)
+```
+
+Now we can draw samples:
+
+```{r}
+model_results <- sampling(model, data=stan_data)
+```
+
+Notice that this model takes longer to fit (about a minute on my machine). We now have 16 species, each with over 1000 observations, so it's maybe not that surprising. Stan claims to be faster than JAGS or BUGS, and greta promises to be even faster. But in my experience, you definitely often need patience when you're using MCMC.
+
+Let's look at the usual fit statement:
+
+```{r}
+model_results
+```
+
+Notice first that everything looks good in terms of $\hat{R}$ and $n_{eff}$, so that's good. Let's take a look at what our hierarchical prior looks like:
+
+```{r}
+slope_sd <- extract(model_results)$slope_sd
+slope_mean <- extract(model_results)$slope_mean
+
+hist(slope_sd)
+hist(slope_mean)
+```
+
+Let's also find the credible intervals (we could also look at the print statement but I wanted to show you how you can do it in R):
+
+```{r}
+slope_sd_quantiles <- quantile(slope_sd, c(0.025, 0.5, 0.975))
+
+slope_sd_quantiles
+```
+
+```{r}
+slope_mean_quantiles <- quantile(slope_mean, c(0.025, 0.5, 0.975))
+slope_mean_quantiles
+```
+
+So the _posterior median_ for the mean is about 0.2, and 0.89 for its standard deviation. This gives us an indication of how different the birds are: in general, the average bird is more likely to respond positively to this covariate, but there is quite a bit of variation around it.
+
+Let's take a look at the slopes for the different birds.
+
+```{r}
+slopes <- extract(model_results)$theta_1
+
+posterior_mean_slopes <- colMeans(slopes)
+posterior_mean_slopes <- data.frame(posterior_mean_slopes, row.names=colnames(y))
+
+posterior_mean_slopes
+```
+
+One way of thinking about what we have inferred is that if we were to fit a new bird, we have learnt a prior on its slope. Let's see what this looks like:
+
+```{r}
+# Pick one realisation of our hyperprior mean:
+example_slope_mean <- slope_mean[1]
+example_slope_sd <- slope_sd[1]
+
+print(example_slope_mean)
+print(example_slope_sd)
+
+# Draw one possible slope
+print(rnorm(1, example_slope_mean, example_slope_sd))
+```
+
+But we don't just have one sample; we want a distribution, so we do it for all the slope possibilities:
+
+```{r}
+slope_draws <- rnorm(length(slope_mean), mean=slope_mean, sd=slope_sd)
+hist(slope_draws)
+```
+
+This is telling us that if we want to model a new bird, our prior for its slope has a credible interval (and median) of:
+
+```{r}
+quantile(slope_draws, c(0.025, 0.5, 0.975))
+```
+
+## Exercises
+
+1. Increase the number of birds to 32. How long does the fit take? What are the new credible intervals for slope mean and standard deviation, as well as for the draws from them?
