@@ -12,9 +12,12 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 * Welcome
-* Stan & R setup
+* Stan & R setup; download
 * Planned Schedule
 * Disclaimer!
+
+Download link:
+https://bit.ly/2YWgqMg
 
 Schedule:
 
@@ -50,7 +53,7 @@ $$
 p(\theta | y)
 $$
 
-This is the value of $\theta$ _given_ our new data $y$. Bayes' rule tells us how to get from $p(\theta)$ to $p(\theta | y)$:
+This is the updated distribution of $\theta$ _given_ our new data $y$. Bayes' rule tells us how to get from $p(\theta)$ to $p(\theta | y)$:
 
 $$
 p(\theta | y) = \frac{p(\theta) p(y | \theta)}{p(y)}
@@ -66,9 +69,9 @@ This is the _likelihood_ of the data we observe for a given parameter $\theta$. 
 
 Finally, $p(y)$ normalises the product of the prior and the likelihood to sum to 1. Today, this term will mainly be a nuisance (we'll see why), but it can be useful for some purposes.
 
-## An example of using Bayes' rule with probabilities
+## An example of using Bayes' rule with binary events
 
-Bayes' rule can be used for probabilities, where it can sometimes lead to surprising results. For example, consider the following scenario.
+Sometimes, Bayes' rule can lead to surprising results, even in simple cases. For example, consider the following scenario.
 
 ```
 You go to see the doctor. As part of a checkup, the doctor tests you for a rare disease, e.g. cancer. This particular disease affects 1 in 1000 people of your age. If you have the disease, the test will test positive with 99% probability. If you don't have the disease, the test will give a negative with 99% probability. You test positive. How worried should you be?
@@ -150,7 +153,7 @@ $$
 p(\theta | y = 1) = \frac{p(\theta) p(y = 1 | \theta)}{p(y = 1)}
 $$
 
-Since we're using a uniform prior here, $p(\theta)$ is just 1. We can use Bayes rule again:
+Since we're using a uniform prior here, $p(\theta)$ is just 1. So, Bayes' rule becomes:
 
 $$
 p(\theta | y = 1) = \frac{\theta}{\int_{0}^1 p(y = 1 | \theta) p(\theta) d\theta} = \frac{\theta}{\int_{0}^1 \theta d\theta} = \frac{\theta}{0.5} = 2\theta
@@ -178,6 +181,7 @@ $$
 p(\theta) = \textrm{Beta}(\theta | \alpha, \beta) \\
 \textrm{often also written as } \theta \sim \textrm{Beta}(\alpha, \beta)
 $$
+
 
 You'll see the second version often in the literature: $\theta$ _is distributed as_ $\textrm{Beta}(\alpha, \beta)$.
 
@@ -209,7 +213,7 @@ lines(x, post, col='green')
 
 The same as before! Note that seeing heads makes the posterior distribution go to zero at $\theta=0$; we know that the value can't be 0 because the coin came up heads, so there's at least some probability of that happening.
 
-OK, well, let's get more interesting. Suppose you toss the coin 10 times and it comes up heads 6 times. What's your posterior now? Turns out it's:
+OK, let's do something more interesting. Suppose you toss the coin 10 times and it comes up heads 6 times. We can think of this as 10 successive updates with a Bernoulli likelihood. What's your posterior now? We won't prove this, but it turns out that it's:
 
 $$
 p(\theta | y_1, y_2, ... y_{10}) = \textrm{Beta}(1 + 6, 1 + 4) = \textrm{Beta}(7, 5)
@@ -226,7 +230,7 @@ posterior <- dbeta(x, n_heads + 1, n_tails + 1)
 theta_plot(x, posterior)
 ```
 
-How cool is that! We can now answer some questions about this. If we had to guess a mean success probability, what would that be? We can do maths, but let's simulate instead (we'll do that from now on). We'll draw from this distribution a few thousand times and compute what we're interested in. This is called a "Monte Carlo" estimate.
+We can now answer some questions about this. If we had to guess a mean success probability, what would that be? We could use the Beta distribution to calculate these exactly, but let's do it via simulation instead (we'll do that from now on). We'll draw from this distribution a few thousand times and compute what we're interested in. This is called a "Monte Carlo" estimate.
 
 ```{r}
 n_draws <- 10000
@@ -241,7 +245,7 @@ The mean is:
 mean(samples)
 ```
 
-And the probability that the success probability is greater than 60% is approximately:
+And the probability that the success probability is greater than 60% is approximately equal to the fraction of draws greater than 60%, so:
 
 ```{r}
 mean(samples > 0.6)
@@ -254,11 +258,28 @@ x <- seq(0, 1, length.out = 1000)
 n_heads <- 200
 n_tails <- 210
 
-# Posterior after observing one head
-posterior <- dbeta(x, n_heads + 1, n_tails + 1)
+posterior <- dbeta(x, n_heads, n_tails)
 
 theta_plot(x, posterior)
 ```
+
+This also meshes with the intuitive idea that we calculate the ratio of heads / (heads + tails) for an estimate of $\theta$:
+
+```{r}
+print('Ratio estimate:')
+print(n_heads / (n_heads + n_tails))
+
+print('Approximate Beta(210, 200) mean:')
+print(mean(rbeta(1e6, n_heads, n_tails)))
+```
+
+So for large numbers of trials, these estimates are quite similar, but they differ at small sample sizes. For example, we would predict $\theta = \frac{1}{1} = 1$ using the ratio with one trial and one success, compared to a posterior mean of about:
+
+```{r}
+mean(rbeta(1e6, 2, 1))
+```
+
+Using the Bayesian version, which is arguably more reasonable.
 
 ## Exercises
 

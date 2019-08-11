@@ -26,7 +26,7 @@ $$
 Now let's imagine we want to model several species at the same time. How would we do that? Two ideas:
 
 1. We could pretend there is no difference between the species -- after all they're all birds, so they're probably similar in some ways. We just make our $x$ and $y$ vectors longer and have more data to fit $\theta_1$ and $\theta_2$.
-2. Perhaps we think that each bird is unique and needs their own coefficients. In that case, we could just fit the same model to each species and look at them separately.
+2. Perhaps we think that each bird is unique and needs its own coefficients. In that case, we could just fit the same model to each species and look at them separately.
 
 Neither of these seem that satisfying, and in fact, we can consider a third option:
 
@@ -49,7 +49,7 @@ Let's see what's going on here. First of all, let's look at the bottom part. We 
 
 So far, that's just what we had to do to fit $J$ species at the same time. The hierarchical bit is the stuff at the top. Rather than giving each $\theta_{11}$ a $\mathcal{N}(0, 1)$ prior, we're actually _also inferring what the mean and variance of these slopes is_. On the top two lines we're providing what's called a _hyperprior_ because it is, in a sense, a prior on the prior for the slope.
 
-This can be a bit confusing, and it took me a while to understand. But it's very cool, because it does what we hoped it might. Let's see how. If the birds' reactions to $x$ are all similar, the hierarchical model may learn that $\sigma_1$  is small. In that case, we're close to case (1) from earlier: all the species are quite similar, and we're giving them very similar coefficients $\theta_1j$. On the other hand, perhaps the data suggest that $\sigma_1$ is large, and each bird is different. This time, we're close to case (2): fitting all species separately. The nice thing about hierarchical models is that they can strike a compromise and learn the variation between species, rather than forcing (1) or (2).
+This can be a bit confusing, and it took me a while to understand. But it's very neat, because it does what we hoped it might. Let's see how. If the birds' reactions to $x$ are all similar, the hierarchical model may learn that $\sigma_1$  is small. In that case, we're close to case (1) from earlier: all the species are quite similar, and we're giving them very similar coefficients $\theta_{1j}$. On the other hand, perhaps the data suggest that $\sigma_1$ is large. This time, we're close to case (2): fitting all species separately. The nice thing about hierarchical models is that they can strike a compromise and learn the variation between species, rather than forcing (1) or (2).
 
 Let's see what this looks like in Stan. First, let's load our data again and prepare it:
 
