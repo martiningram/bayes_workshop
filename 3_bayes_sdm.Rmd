@@ -1,5 +1,5 @@
 ---
-title: "Species distribution models"
+title: "Logistic Regression Example"
 author: "Martin Ingram"
 date: "05/08/2019"
 output: html_document
@@ -11,7 +11,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # The problem
 
-To introduce a more realistic modelling scenario, we're going to have a species distribution modelling example. We have what's called "survey data": people went out into the field and checked whether a certain bird was present or absent at a site. These are our outcomes $y_{ij}$: at site $i$, species $j$ was either observed ($y_{ij} = 1$) or not observed ($y_{ij} = 0$). We also have access to a number of covariates, a subset of the so-called "BIOCLIM" variables:
+To introduce a more realistic modelling scenario, we're going to have a species distribution modelling example. Note that even if you're not interested in modelling species distributions, the logistic regression model we'll use has wide applicability. 
+
+We have what's called "survey data": people went out into the field and checked whether a certain bird was present or absent at a site. These are our outcomes $y_{ij}$: at site $i$, species $j$ was either observed ($y_{ij} = 1$) or not observed ($y_{ij} = 0$). We also have access to a number of covariates, a subset of the so-called "BIOCLIM" variables:
 
 ```
 BIO1 = Annual Mean Temperature
@@ -227,10 +229,10 @@ model {
 
 There's a few new things here. Let's make sure we understand them.
 
-* Our `y` is now what is called an `array`, because we have `n_obs` observations, one for each site. Note the placement of the square brackets _after_ the variable. It is still integer, because it can only be 0 and `.
+* Our `y` is now what is called an `array`, because we have `n_obs` observations, one for each site. Note the placement of the square brackets _after_ the variable. It is still integer, because it can only be 0 and 1.
 * Our predictors `x` are a `vector[n_obs]`. Note that here, the square brackets are before the the variable name. This is admittedly a bit confusing, but that's the way it works.
 * Note that we wrote `y ~ bernoulli_logit(...)`. Because it's so common to use the inverse logit transformation, $\textrm{logit}^{-1}$, together with the Bernoulli likelihood, Stan gives us a function to do it in one go. We could also have done: `y ~ bernoulli(inv_logit(...))`, but this way is better.
-* Finally, not that Stan has "vectorised" this. Even though `y` is an array, we don't have to write a loop (although we could have). This way is usually faster and easier to read.
+* Finally, note that Stan has "vectorised" this. Even though `y` is an array, we don't have to write a loop (although we could have). This way is usually faster and easier to read.
 
 If you have any questions, please let me know, we can talk about this at length.
 
@@ -299,6 +301,9 @@ We can also plot the response with error bars.
 
 ```{r}
 x_plot <- seq(-2, 2, length.out = 100)
+# The sapply here just means that for each x value, we're going to calculate:
+# The mean of the posterior draws
+# The 2.5% and 97.5% quantiles
 y_mean <- sapply(x_plot, function(x) mean(plogis(theta_1 * x + theta_2)))
 y_lower <- sapply(x_plot, function(x) quantile(plogis(theta_1 * x + theta_2), 0.025))
 y_upper <- sapply(x_plot, function(x) quantile(plogis(theta_1 * x + theta_2), 0.975))

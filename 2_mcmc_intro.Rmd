@@ -181,6 +181,22 @@ hist(theta_draws, add=TRUE, col = rgb(0, 1, 0, 0.2))
 
 I hope you agree that these look pretty similar. So Stan allows us to draw samples from the posterior just like we could when we knew the exact answer. In this case, we didn't really need MCMC, but we'll move on to more interesting models next.
 
+One more thing: we can look at the draws by chain (stan just concatenates them together):
+
+```{r}
+plot(theta_draws[1:1000], type='l', col='green')
+lines(theta_draws[1000:2000], type='l', col='blue')
+lines(theta_draws[2000:3000], type='l', col='red')
+lines(theta_draws[3000:4000], type='l', col='orange')
+```
+
+You can see that these look like a "hairy caterpillar", which is good. Visual checks like this can be good to do, since they can reveal things that went wrong (for example, if the chain gets "stuck", you can see a flat line). Stan can also do this automatically for you:
+
+```{r}
+stan_trace(model_fit)
+```
+
+
 ## Exercises
 
 1. Make a copy of the `beta_binomial.stan` file called `beta_binomial_problems.stan` and try to break Stan. What happens if you forget the `<lower=0, upper=1>` for theta? What happens if you mistakenly say that `n` is a `real` variable?
