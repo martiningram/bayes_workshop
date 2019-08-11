@@ -71,7 +71,13 @@ y_wood <- y[, 'Wood Duck']
 head(y_wood)
 ```
 
-Great! We have the vector of presence / absence data.
+Great! We have the vector of presence / absence data. Note that while the first entries are all zeros, the Wood Duck is observed at some sites:
+
+```{r}
+print('Total observations:')
+print(sum(y_wood))
+```
+
 
 One thing that is usually good to do before a regression is to centre and scale our data. Right now, we see that the covariates have large integer values, and their mean and standard deviations are not 0 and 1:
 
@@ -147,7 +153,7 @@ See what happened? The inverse logit function "squashes" the function values bet
 
 What priors should we give our linear model parameters? Here, it's not completely crucial, since we have a lot of data and only two parameters, so the data will "overwhelm" any prior we might use. Still, let's work out something reasonable.
 
-We can do something called "prior predictive checks" to work out if our priors make any sense. The way we do this is we generate fake data from our prior and see whether it looks reasonable. For example of what may not be reasonable, let's say we do:
+We can do something called "prior predictive checks" to work out if our priors make any sense. The way we do this is we generate fake data from our prior and see whether it looks reasonable. For an example of what may not be reasonable, let's say we do:
 
 $$
 \theta_1 \sim \mathcal{N}(0, 100^2) \\
@@ -175,7 +181,7 @@ p_i <- plogis(theta_1 * x_fit + theta_2)
 hist(p_i, breaks=50)
 ```
 
-We see that under this prior, the model is almost perfectly certain the bird is present at some point, and almost perfectly certain it isn't present at others. That doesn't seem reasonable; it's much more likely that the bird is more likely to be at some sites than others, but hardly that we can say with almost 100% confidence that it will be present or absent.
+We see that under one realisation of this prior, the model is almost perfectly certain the bird is present at some sites, and almost perfectly certain it isn't present at others. That doesn't seem reasonable; it's much more likely that the bird is more likely to be at some sites than others, but hardly that we can say with almost 100% confidence that it will be present or absent.
 
 These so-called "non-informative" priors used to be popular because they try to minimise the influence of the prior distribution. Many people advocate for ditching these priors these days however and instead using priors that we can justify. For simple models, it doesn't really matter, but for more complicated models it's important that you think about your priors and choose ones that produce reasonable data.
 
@@ -230,8 +236,8 @@ model {
 There's a few new things here. Let's make sure we understand them.
 
 * Our `y` is now what is called an `array`, because we have `n_obs` observations, one for each site. Note the placement of the square brackets _after_ the variable. It is still integer, because it can only be 0 and 1.
-* Our predictors `x` are a `vector[n_obs]`. Note that here, the square brackets are before the the variable name. This is admittedly a bit confusing, but that's the way it works.
-* Note that we wrote `y ~ bernoulli_logit(...)`. Because it's so common to use the inverse logit transformation, $\textrm{logit}^{-1}$, together with the Bernoulli likelihood, Stan gives us a function to do it in one go. We could also have done: `y ~ bernoulli(inv_logit(...))`, but this way is better.
+* Our predictors `x` are a `vector[n_obs]`. Note that here, the square brackets are before the the variable name. This is admittedly a bit confusing, but that's the way it works. A vector is a collection of real numbers, in the linear algebra sense (a column vector in fact).
+* Note that we wrote `y ~ bernoulli_logit(...)`. Because it's so common to use the inverse logit transformation, $\textrm{logit}^{-1}$, together with the Bernoulli likelihood, Stan gives us a function to do it in one go. We could also have done: `y ~ bernoulli(inv_logit(...))`, but this way is better because it is more numerically stable.
 * Finally, note that Stan has "vectorised" this. Even though `y` is an array, we don't have to write a loop (although we could have). This way is usually faster and easier to read.
 
 If you have any questions, please let me know, we can talk about this at length.

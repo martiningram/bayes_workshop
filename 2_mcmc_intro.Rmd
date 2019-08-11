@@ -41,6 +41,7 @@ We won't be able to go into any detail of how MCMC works under the hood. But I d
 
 1. A proposal: given the current position (e.g. probability of heads $\theta$), propose a new location $\theta^*$
 2. Accept / reject: Compute the ratio $r = p(\theta^*|y) / p(\theta|y)$ (which we can do since $p(y)$ cancels) and accept the proposal with probability $\min(1, r)$.
+3. Go back to step 1.
 
 The surprising result is that under some pretty general conditions, if run long enough, the samples returned by this algorithm are (usually correlated) samples from the posterior $p(\theta|y)$. The thing we are constructing here is known as a "Markov Chain", hence the name MCMC.
 
@@ -52,7 +53,7 @@ https://chi-feng.github.io/mcmc-demo/app.html#NaiveNUTS,banana
 
 Although there is a proof that _if run long enough_ the draws returned by a MCMC algorithm will be from $p(\theta|y)$, we don't know how long that is. There is always an initial period where the "chain is converging", i.e. it is moving towards the distribution $p(\theta|y)$ but isn't there yet. Samplers try to avoid returning this part of the chain by doing what's called a "warmup", or "burn-in", but that's still no guarantee that it worked. There are some diagnostics that can help spot whether our chain really has converged:
 
-1. The so-called $\hat{R}$ statistic (pronounced R hat) is probably the most widely used diagnostic. It works by running a number of different chains starting at different positions. The idea is that while these chains are all different at the start, they should eventually end up sampling from the same distribution. To work this out, it computes the within-chain variance and compares it to the between-chain variance; if they are very similar, $\hat{R}$ is close to 1, and that's a good sign.
+1. The so-called $\hat{R}$ statistic (pronounced R hat) is probably the most widely used diagnostic. It works by running a number of different chains starting at different positions. The idea is that while these chains are all different at the start, they should eventually end up sampling from the same distribution. Roughly speaking, it computes the between-chain variance and compares it to the within-chain variance; if they are very similar, $\hat{R}$ is close to 1, and that's a good sign.
 2. Often, people also report $n_{eff}$, the effective sample size. Before, when we used `rbeta` to draw a number of $n$ samples, we were able to draw them independently from the posterior because we knew its distribution. In MCMC, because we are moving around in sequence, the samples are usually not independent, but "autocorrelated", i.e. the previous sample is similar to the current sample. So $n_{eff}$ will usually be smaller than the number of samples in our chain. In general, a larger number of $n_{eff}$ is a good sign.
 
 Please note that neither of these diagnostics _guarantees_ that everything is OK, as some Bayesians are at pains to point out. While that's true and you should always be careful to make sure your model results make sense, in my experience $\hat{R}$ in particular is a pretty reliable diagnostic.
@@ -73,7 +74,7 @@ $$
 \theta \sim \textrm{Beta}(1, 1)
 $$
 
-For the likelihood, we'll use the Bernoulli distribution again. However, the Bernoulli distribution is for binary outcomes, so we could only update using a single coin toss outcome. Instead, we'll be using the Binomial distribution:
+For the likelihood, we could use the Bernoulli distribution again. However, the Bernoulli distribution is for binary outcomes, so we could only update using a single coin toss outcome. Instead, we'll be using the Binomial distribution:
 
 $$
 y | \theta \sim \textrm{Binomial}(n, \theta)
