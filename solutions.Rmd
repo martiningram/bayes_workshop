@@ -1,6 +1,8 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 
@@ -36,7 +38,7 @@ mean(rbeta(10000, alpha, beta) > 0.7)
 
 # Section 2
 
-Exercise 1: No real solution here, just playing around. We can mess around a bit.
+Exercise 1: What you should see is that there are "divergent transitions" when you remove the <lower=0, upper=1>. And Stan should complain and fail to compile if you get the types wrong.
 Exercise 2: 
 
 ```{r}
@@ -129,7 +131,9 @@ So the 95% credible intervals are:
 * `[-0.28, 0.08]` for the slope theta_2
 * `[-2.14, -1.83]` for the intercept theta_2
 
-One remark: if we have many covariates, it can get pretty tedious to write out `theta_1, theta_2...` for each one of them. You can instead define a `vector` of coefficients $\theta$ and a matrix `X` (sometimes called the design matrix), and then compute things using matrices. But I didn't want to burden you with matrix algebra on top of all the Bayesian stuff. The Stan manual is a great resource if you are interested in how to do it.
+One remark: if we have many covariates, it can get pretty tedious to write out `theta_1, theta_2...` for each one of them. You can instead define a `vector` of coefficients $\theta$ and a matrix `X` (sometimes called the design matrix), and then compute things using matrices. But I didn't want to burden you with matrix algebra on top of all the Bayesian stuff. The Stan user guide is a great resource and has one way of doing this:
+
+https://mc-stan.org/docs/2_20/stan-users-guide/hierarchical-logistic-regression.html
 
 ## Advanced models
 
